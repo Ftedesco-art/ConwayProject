@@ -1,4 +1,4 @@
-//CONWAY PROJECT 0.1 (stable)
+//CONWAY PROJECT 1.1.0 (Stable)
 //F.T 2025
 
 #include "functions.hpp"

@@ -1,4 +1,4 @@
-//CONWAY PROJECT 0.1 (stable)
+//CONWAY PROJECT 1.1.0 (Stable)
 //F.T 2025
 
 #include <SDL2/SDL.h>
@@ -26,7 +26,16 @@ Simulation::Simulation()
      m_tickInterval(1000),
      m_grid(),
      m_isRunning(),
-     m_hudTextures()
+     m_hudTextures(),
+     m_showConfig(),
+     m_cameraX(0),
+     m_cameraY(0),
+     m_cameraVelX(0),
+     m_cameraVelY(0),
+     m_Wkeydown(false),
+     m_Skeydown(false),
+     m_Akeydown(false),
+     m_Dkeydown(false)
 
      //SDL Initialization
     {
@@ -59,16 +68,9 @@ Simulation::Simulation()
 
         }
 
-        //Grid Data building
-        for(int i = 0; i<m_rows; i++)
-        { 
-            for(int j = 0; j<m_columns; j++)
-            {
-                Cell currentCell;
-                currentCell.state = 0;
-                m_grid.push_back(currentCell);
-            }
-        }
+        resetGrid(m_width, m_height);
+
+        
         //ImGui Initialization
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -81,7 +83,8 @@ Simulation::Simulation()
         SDL_Texture* play1xTexture = IMG_LoadTexture(m_renderer, "images/Play1x.png");
         SDL_Texture* play2xTexture = IMG_LoadTexture(m_renderer, "images/Play2x.png");
         SDL_Texture* play4xTexture = IMG_LoadTexture(m_renderer, "images/Play4x.png");
-        m_hudTextures = {pauseTexture, play1xTexture, play2xTexture, play4xTexture};
+        SDL_Texture* optionsTexture = IMG_LoadTexture(m_renderer, "images/Options.png");
+        m_hudTextures = {pauseTexture, play1xTexture, play2xTexture, play4xTexture, optionsTexture};
         //Finalization
         m_isRunning = true;
     }
@@ -121,8 +124,8 @@ void Simulation::render()
         int row = i/m_columns;
         int column = i % m_columns;
         SDL_Rect cellRect;
-        cellRect.x = column * m_cellSize;
-        cellRect.y = row * m_cellSize;
+        cellRect.x = (column * m_cellSize)+m_cameraX;
+        cellRect.y = (row * m_cellSize)+m_cameraY;
         cellRect.h = m_cellSize;
         cellRect.w = m_cellSize;
 
@@ -173,8 +176,32 @@ void Simulation::render()
         m_tickInterval = 250;
         
     }
+    ImGui::SameLine();
+    if(ImGui::ImageButton(("Options"), (ImTextureID)m_hudTextures[4],ImVec2(64, 64)))
+    {
+        m_showConfig = true;
+    }
     ImGui::Text("Current Generation: %d", m_generation);
     ImGui::End();
+
+    //Config options
+    if(m_showConfig == true)
+    {
+        ImGui::Begin("Configurations", &m_showConfig);
+
+        static int tempWidth = m_width;
+        static int tempHeight = m_height;
+
+        ImGui::InputInt("Grid Width", &tempWidth);
+        ImGui::InputInt("Grid Height", &tempHeight);
+        if(ImGui::Button("Resize"))
+        {
+            resetGrid(tempWidth, tempHeight);
+        }
+
+        ImGui::Text("Note: Resizing will clear the current simulation.");
+        ImGui::End();
+    }
 
     ImGui::Render();
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), m_renderer);
@@ -183,6 +210,29 @@ void Simulation::render()
     SDL_RenderPresent(m_renderer);
 }
 
+
+void Simulation::resetGrid(int newWidth, int newHeight)
+{
+    //Grid Data building
+    m_width = newWidth;
+    m_height = newHeight;
+    
+    m_rows = newHeight/m_cellSize;
+    m_columns =  newWidth/m_cellSize;
+    
+    m_grid.clear();
+
+        for(int i = 0; i<m_rows; i++)
+        { 
+            for(int j = 0; j<m_columns; j++)
+            {
+                Cell currentCell;
+                currentCell.state = 0;
+                m_grid.push_back(currentCell);
+            }
+        }
+    m_generation = 0;
+}
 //============================== Simulation Main Loop ==============================
 void Simulation::run()
 {
@@ -214,8 +264,8 @@ void Simulation::processInput()
         {    
             
                     
-            int xpos = event.button.x/m_cellSize;
-            int ypos = event.button.y/m_cellSize;
+            int xpos = (event.button.x-m_cameraX)/m_cellSize;
+            int ypos = (event.button.y-m_cameraY)/m_cellSize;
                         
             int index = ypos * m_columns + xpos;
             if(index > 0 && index < m_grid.size())
@@ -231,6 +281,48 @@ void Simulation::processInput()
             }
                    
         }
+        if(!io.WantCaptureKeyboard)
+        {
+            if(event.type == SDL_KEYDOWN)
+            {
+                switch(event.key.keysym.sym)
+                {
+                 case SDLK_w: m_Wkeydown = true;
+                 break;
+
+                 case SDLK_s: m_Skeydown = true;
+                 break;
+
+                 case SDLK_a: m_Akeydown = true;
+                 break;
+
+                 case SDLK_d: m_Dkeydown = true;
+                 break;
+
+                }
+            }
+            if(event.type == SDL_KEYUP)
+            {
+                switch(event.key.keysym.sym)
+                {
+                 case SDLK_w: m_Wkeydown = false;
+                 m_cameraVelY = 0;
+                 break;
+                 case SDLK_s: m_Skeydown = false;
+                 m_cameraVelY = 0;
+                 break;
+                 case SDLK_a: m_Akeydown = false;
+                 m_cameraVelX = 0;
+                 break;
+                 case SDLK_d: m_Dkeydown = false;
+                 m_cameraVelX = 0;
+                 break;
+                }
+            }
+            
+        }
+        
+        
     }
 }
 
@@ -240,6 +332,42 @@ void Simulation::processInput()
 
 void Simulation::tick()
 {
+    //Movement
+    if(m_Wkeydown == true)
+    {
+     
+        if(abs(m_cameraVelY)<=1)
+        {
+         m_cameraVelY += 0.1;
+        }
+        m_cameraY += m_cameraVelY;
+    }
+    if(m_Skeydown == true)
+    {
+        if(abs(m_cameraVelY)<=1)
+        {
+         m_cameraVelY -= 0.1;
+        }
+        m_cameraY += m_cameraVelY;
+    }
+    if(m_Akeydown == true)
+    {
+        if(abs(m_cameraVelX)<=1)
+        {
+         m_cameraVelX += 0.1;
+        }
+        m_cameraX += m_cameraVelX;
+    }
+    if(m_Dkeydown == true)
+    {
+        if(abs(m_cameraVelX)<=1)
+        {
+         m_cameraVelX -= 0.1;
+        }
+        m_cameraX += m_cameraVelX;
+    }
+
+
     if(m_gameState == 0)
     {
         return;
@@ -252,6 +380,7 @@ void Simulation::tick()
         return;
     }
 
+    //Generation
     m_lastTickTime = currentTime;
     m_generation++;
 
