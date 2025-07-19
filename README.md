@@ -1,6 +1,6 @@
 # Conway-Project
 A celullar automata simulator.
-Current latest version is 1.1.0
+Current version is 1.1.0
 ================
 Changelog
 +Camera System
